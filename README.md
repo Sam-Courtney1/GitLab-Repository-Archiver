@@ -25,3 +25,4 @@ To use this script, add the repository's SSH or HTTPS link into a Jenkins job
 Enter a single link into the first box or add multiple links to the second. A combination of both will result in an error
 
 Ensure there is only one link per line and click **Build**
+
