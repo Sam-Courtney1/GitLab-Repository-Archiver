@@ -1,0 +1,79 @@
+pipeline {
+  agent { 
+    node { 
+      label 'small' 
+    } 
+  }
+  options {
+    buildDiscarder logRotator(
+      artifactDaysToKeepStr: '', 
+      artifactNumToKeepStr: '', 
+      daysToKeepStr: '', 
+      numToKeepStr: '30'
+    )
+    ansiColor('xterm')
+  }
+  parameters {
+    string (
+      name: 'REPO_PATH',
+      defaultValue: '',
+      description: 'Enter a single GitLab repo path (SSH or HTTPS)',
+      trim: true
+    )
+    text (
+      name: 'MULTIPLE_REPO_PATHS',
+      defaultValue: '',
+      description: 'Enter multiple GitLab repo paths (one per line)',
+      trim: true
+    )
+  }
+  stages {
+    stage('Install Dependencies') {
+      steps {
+        sh 'pip3 install --user requests boto3'
+      }
+    }
+    stage('gitlab archive job') {
+      steps {
+        withCredentials([
+          sshUserPrivateKey(credentialsId: 'XYZ', keyFileVariable: 'KEY', usernameVariable: 'GIT_USER')
+        ]) {
+          script {
+            wrap([$class: 'BuildUser']) {
+              echo "Repo to archive: ${params.REPO_PATH}"
+              echo "Build triggered by: ${BUILD_USER_ID}"
+              echo "Multi repo (if any): ${params.MULTIPLE_REPO_PATHS}"
+
+              def isMulti = params.MULTIPLE_REPO_PATHS?.trim()
+
+              // Guard against both being filled
+              if (params.REPO_PATH?.trim() && isMulti) {
+                error "Provide either REPO_PATH or MULTIPLE_REPO_PATHS, not both"
+              }
+
+              sh """
+                export USER_EMAIL="$BUILD_USER_ID"
+                if [ -n "${isMulti}" ]; then
+                  echo "${params.MULTIPLE_REPO_PATHS}" >> repos.txt && python3 archive_multiple_repos.py
+                else
+                  echo "${params.REPO_PATH}" | python3 archive_repo.py
+                fi
+              """
+            }
+          }
+        }
+      }
+    }
+  }
+  post {
+    always {
+      archiveArtifacts allowEmptyArchive: true, artifacts: '**/*.json, **/*.txt'
+    }
+    cleanup {
+      cleanWs(
+        deleteDirs: true,
+        externalDelete: '/bin/rm -rf %s'
+      )
+    }
+  }
+}
